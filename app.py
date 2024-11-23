@@ -1,41 +1,34 @@
 import streamlit as st
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
-from pydub import AudioSegment
+from transformers import pipeline
+from moviepy.editor import AudioFileClip
 import torch
 import os
-import time
 import yt_dlp
-import tempfile
 
-# Set Streamlit page config
-st.set_page_config(page_title="Audio/Video-to-Text Transcription", layout="centered", initial_sidebar_state="auto")
+# Set Streamlit page configuration
+st.set_page_config(page_title="Video-to-Text Transcription", layout="centered", initial_sidebar_state="auto")
 
 # Check if GPU is available
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-# Load the Whisper model and pipeline
+# User input for chunk length and stride length
+st.sidebar.header("Model Configuration")
+chunk_length_s = st.sidebar.number_input("Chunk Length (seconds):", min_value=5, max_value=120, value=10, step=1)
+stride_length_s = st.sidebar.number_input("Stride Length (seconds):", min_value=1, max_value=10, value=2, step=1)
+
+# Load the Whisper model pipeline
 @st.cache_resource
-def load_model():
-    model_id = "openai/whisper-large-v3"
-    model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True
-    )
-    model.to(device)
-    processor = AutoProcessor.from_pretrained(model_id)
-
+def load_model(chunk_length, stride_length):
     return pipeline(
         "automatic-speech-recognition",
-        model=model,
-        tokenizer=processor.tokenizer,
-        feature_extractor=processor.feature_extractor,
-        chunk_length_s=30,
-        batch_size=16,  # Adjust based on device
-        torch_dtype=torch_dtype,
-        device=device,
+        "openai/whisper-small",
+        chunk_length_s=chunk_length,
+        stride_length_s=stride_length,
+        return_timestamps=True,
+        device=device
     )
 
-pipe = load_model()
+pipe = load_model(chunk_length_s, stride_length_s)
 
 # Function to download audio using yt-dlp
 def download_audio_youtube(video_url, output_path="temp_audio.mp4"):
@@ -44,95 +37,39 @@ def download_audio_youtube(video_url, output_path="temp_audio.mp4"):
         'outtmpl': output_path,
         'quiet': True,
     }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([video_url])
+    return output_path
+
+# App title
+st.title("YouTube Video to Text Transcription")
+
+# Input for YouTube video link
+video_url = st.text_input("Enter YouTube video link:")
+
+if video_url:
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
-        return output_path
-    except yt_dlp.utils.DownloadError as e:
-        st.error(f"Error downloading audio from YouTube: {e}")
-        return None
+        # Download audio
+        st.info("Downloading audio...")
+        audio_file = download_audio_youtube(video_url)
 
-# Function to format transcription
-def format_transcription(transcription):
-    formatted_text = transcription["text"]
-    return formatted_text.strip()
+        # Extract audio as WAV
+        st.info("Extracting audio...")
+        audio_clip = AudioFileClip(audio_file)
+        wav_file = "temp_audio.wav"
+        audio_clip.write_audiofile(wav_file, codec='pcm_s16le')
+        audio_clip.close()
 
-# Function to convert audio to WAV format using pydub
-def convert_to_wav(input_file, output_file="temp_audio.wav"):
-    audio = AudioSegment.from_file(input_file)
-    audio.export(output_file, format="wav")
-    return output_file
+        # Perform transcription
+        st.info("Transcribing audio...")
+        transcription = pipe(wav_file)
 
-# Main app function
-def main():
-    st.markdown("<h1 style='color: #00bfff;'>Audio/Video-to-Text Transcription App</h1>", unsafe_allow_html=True)
+        # Display transcription
+        st.subheader("Transcription Result:")
+        st.text_area("Transcribed Text:", transcription['text'], height=400)
 
-    tab1, tab2 = st.tabs(["Audio File", "YouTube Video"])
-
-    with tab1:
-        st.subheader("Transcribe Audio File")
-        uploaded_file = st.file_uploader("Upload an audio file", type=["mp3", "wav", "ogg"])
-        if uploaded_file:
-            st.audio(uploaded_file)
-
-            if st.button("Transcribe Audio"):
-                with st.spinner("Processing..."):
-                    start_time = time.time()
-
-                    # Temporary file handling
-                    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                        temp_file.write(uploaded_file.getbuffer())
-                        temp_file_path = temp_file.name
-
-                    try:
-                        # Convert to WAV and transcribe
-                        wav_file = convert_to_wav(temp_file_path)
-                        transcription = pipe(wav_file)
-                        formatted_transcription = format_transcription(transcription)
-
-                        # Display results
-                        st.success("Transcription completed!")
-                        st.subheader("Transcription")
-                        st.text_area("Output", value=formatted_transcription, height=400)
-
-                        # Download options
-                        st.download_button("Download Transcription", formatted_transcription, file_name="transcription.txt")
-
-                    except Exception as e:
-                        st.error(f"Error processing audio: {e}")
-
-                    finally:
-                        end_time = time.time()
-                        st.write(f"Time taken: {round(end_time - start_time, 2)} seconds")
-                        os.remove(temp_file_path)
-
-    with tab2:
-        st.subheader("Transcribe YouTube Video")
-        video_url = st.text_input("Enter YouTube video link:")
-        if video_url:
-            if st.button("Transcribe Video"):
-                with st.spinner("Processing..."):
-                    try:
-                        audio_file = download_audio_youtube(video_url)
-
-                        if audio_file:
-                            wav_file = convert_to_wav(audio_file)
-                            transcription = pipe(wav_file)
-                            formatted_transcription = format_transcription(transcription)
-
-                            # Display results
-                            st.success("Transcription completed!")
-                            st.subheader("Transcription")
-                            st.text_area("Output", value=formatted_transcription, height=400)
-
-                            # Download options
-                            st.download_button("Download Transcription", formatted_transcription, file_name="transcription.txt")
-
-                            os.remove(audio_file)
-                            os.remove(wav_file)
-
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-
-if __name__ == "__main__":
-    main()
+        # Cleanup temporary files
+        os.remove(audio_file)
+        os.remove(wav_file)
+    except Exception as e:
+        st.error(f"Error: {e}")
