@@ -6,3 +6,4 @@ pandas==2.2.3
 yt-dlp==2024.11.18
 pydub
 ffmpeg
+datasets
