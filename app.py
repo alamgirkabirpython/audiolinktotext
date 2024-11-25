@@ -70,9 +70,19 @@ def convert_to_wav(input_file, output_file="temp_audio.wav"):
     audio.export(output_file, format="wav")
     return output_file
 
+# Reset session state for new processing
+def reset_session_state():
+    st.session_state.previous_url = None
+    st.session_state.error_occurred = False
+
 # Main app function
 def main():
     st.markdown("<h1 style='color: #00bfff;'>Audio/Video-to-Text Transcription App</h1>", unsafe_allow_html=True)
+
+    # Reset session state button
+    if st.button("Reset App"):
+        reset_session_state()
+        st.success("App state has been reset. Ready for new inputs!")
 
     # Tabs for different functionalities
     tab1, tab2 = st.tabs(["Audio File", "YouTube Video"])
@@ -123,10 +133,12 @@ def main():
 
         if "previous_url" not in st.session_state:
             st.session_state.previous_url = None
+            st.session_state.error_occurred = False
 
-        if video_url and video_url != st.session_state.previous_url:
+        if video_url and (video_url != st.session_state.previous_url or st.session_state.error_occurred):
             if st.button("Transcribe Video"):
                 st.session_state.previous_url = video_url
+                st.session_state.error_occurred = False
                 with st.spinner("Processing..."):
                     try:
                         # Download audio
@@ -156,6 +168,7 @@ def main():
 
                     except Exception as e:
                         st.error(f"Error: {e}")
+                        st.session_state.error_occurred = True  # Set error flag
 
 if __name__ == "__main__":
     main()
