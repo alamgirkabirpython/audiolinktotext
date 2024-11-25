@@ -72,7 +72,7 @@ def convert_to_wav(input_file, output_file="temp_audio.wav"):
 
 # Reset session state for new processing
 def reset_session_state():
-    st.session_state.previous_url = None
+    st.session_state.previous_input = None
     st.session_state.error_occurred = False
 
 # Main app function
@@ -118,10 +118,15 @@ def main():
                         # Download options
                         st.download_button("Download Subtitles (SRT File)", srt_transcription, file_name="transcription.srt")
 
+                    except Exception as e:
+                        st.error(f"Error processing audio file: {e}")
+                        reset_session_state()
+
                     finally:
                         # Clean up
                         os.remove(temp_file_path)
-                        os.remove(wav_file)
+                        if os.path.exists(wav_file):
+                            os.remove(wav_file)
 
                     end_time = time.time()
                     st.write(f"Time taken: {round(end_time - start_time, 2)} seconds")
@@ -131,13 +136,12 @@ def main():
         st.subheader("Transcribe YouTube Video")
         video_url = st.text_input("Enter YouTube video link:")
 
-        if "previous_url" not in st.session_state:
-            st.session_state.previous_url = None
-            st.session_state.error_occurred = False
+        if "previous_input" not in st.session_state:
+            reset_session_state()
 
-        if video_url and (video_url != st.session_state.previous_url or st.session_state.error_occurred):
+        if video_url and (video_url != st.session_state.previous_input or st.session_state.error_occurred):
             if st.button("Transcribe Video"):
-                st.session_state.previous_url = video_url
+                st.session_state.previous_input = video_url
                 st.session_state.error_occurred = False
                 with st.spinner("Processing..."):
                     try:
@@ -164,11 +168,12 @@ def main():
 
                             # Clean up
                             os.remove(audio_file)
-                            os.remove(wav_file)
+                            if os.path.exists(wav_file):
+                                os.remove(wav_file)
 
                     except Exception as e:
-                        st.error(f"Error: {e}")
-                        st.session_state.error_occurred = True  # Set error flag
+                        st.error(f"Error processing YouTube video: {e}")
+                        st.session_state.error_occurred = True
 
 if __name__ == "__main__":
     main()
