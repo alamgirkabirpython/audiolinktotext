@@ -1,4 +1,4 @@
-rimport streamlit as st
+import streamlit as st
 from transformers import pipeline
 from pydub import AudioSegment
 import torch
