@@ -12,6 +12,8 @@ st.set_page_config(page_title="Audio/Video-to-Text Transcription", layout="cente
 
 # Check if GPU is available
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+chunk_length = st.slider("Chunk Length (s)", min_value=10, max_value=1000, value=30, step=5)
+stride_length = st.slider("Stride Length (s)", min_value=1, max_value=10, value=3, step=1)
 
 # Load the Whisper model pipeline
 @st.cache_resource
@@ -19,8 +21,8 @@ def load_model():
     return pipeline(
         "automatic-speech-recognition",
         "openai/whisper-small",
-        chunk_length_s=30,
-        stride_length_s=3,
+        chunk_length_s=chunk_length,
+        stride_length_s=stride_length,
         return_timestamps=True,
         device=device,
     )
